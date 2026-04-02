@@ -8,13 +8,13 @@ Fast, simple API for generating screenshots and PDFs from any URL. Free tier inc
 
 ```bash
 # Screenshot
-curl "https://tissue-trying-helena-alto.trycloudflare.com/screenshot?url=https://example.com" -o screenshot.png
+curl "https://britney-exec-lifetime-restaurant.trycloudflare.com/screenshot?url=https://example.com" -o screenshot.png
 
 # PDF
-curl "https://tissue-trying-helena-alto.trycloudflare.com/pdf?url=https://example.com" -o page.pdf
+curl "https://britney-exec-lifetime-restaurant.trycloudflare.com/pdf?url=https://example.com" -o page.pdf
 
 # HTML to Image
-curl -X POST "https://tissue-trying-helena-alto.trycloudflare.com/html-to-image" \
+curl -X POST "https://britney-exec-lifetime-restaurant.trycloudflare.com/html-to-image" \
   -H "Content-Type: text/html" \
   -d "<h1>Hello World</h1>" -o output.png
 ```

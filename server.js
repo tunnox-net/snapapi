@@ -353,3 +353,77 @@ app.get('/og', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ============ Crypto Utilities ============
+
+// Wallet address QR code (convenience endpoint)
+app.get('/wallet-qr', (req, res) => {
+  const { address, chain = 'ETH', size = 256 } = req.query;
+  if (!address) return res.status(400).json({ error: 'address required' });
+  
+  const text = address;
+  fetch(`https://chart.googleapis.com/chart?cht=qr&chs=${size}x${size}&chl=${encodeURIComponent(text)}&choe=UTF-8`)
+    .then(r => r.arrayBuffer())
+    .then(buf => {
+      res.set('Content-Type', 'image/png');
+      res.send(Buffer.from(buf));
+    })
+    .catch(e => res.status(500).json({ error: e.message }));
+});
+
+// Address validation
+app.get('/validate-address', (req, res) => {
+  const { address, chain = 'ETH' } = req.query;
+  if (!address) return res.status(400).json({ error: 'address required' });
+  
+  let valid = false, checksum = false, type = 'unknown';
+  
+  if (/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    valid = true; type = 'EVM (ETH/BSC/Polygon)';
+  } else if (/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(address) || /^bc1[a-z0-9]{39,59}$/.test(address)) {
+    valid = true; type = 'Bitcoin';
+  } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+    valid = true; type = 'Solana';
+  } else if (/^T[A-Za-z1-9]{33}$/.test(address)) {
+    valid = true; type = 'Tron';
+  }
+  
+  res.json({ address, valid, type, chain });
+});
+
+// Simple phishing check (domain reputation)
+app.get('/check-url', async (req, res) => {
+  const { url: targetUrl } = req.query;
+  if (!targetUrl) return res.status(400).json({ error: 'url required' });
+  
+  try {
+    const domain = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`).hostname;
+    
+    // Check against known crypto phishing patterns
+    const phishingPatterns = [
+      /metamask[^.]*\.(net|org|io|xyz|cc)/i,
+      /uniswap[^.]*\.(net|org|io|xyz|cc)/i,
+      /binance[^.]*\.(net|io|xyz|cc)/i,
+      /coinbase[^.]*\.(net|io|xyz|cc)/i,
+      /connect-wallet/i,
+      /claimnft/i,
+      /airdrop-claim/i,
+      /mint-free/i,
+    ];
+    
+    const suspicious = phishingPatterns.some(p => p.test(domain));
+    const hasHomoglyphs = /[^\x00-\x7F]/.test(domain);
+    const risk = suspicious || hasHomoglyphs ? 'high' : 'low';
+    
+    res.json({
+      url: targetUrl,
+      domain,
+      risk,
+      suspicious,
+      hasHomoglyphs,
+      warning: risk === 'high' ? '⚠️ This URL shows signs of being a phishing site!' : null,
+    });
+  } catch(e) {
+    res.status(400).json({ error: 'Invalid URL' });
+  }
+});

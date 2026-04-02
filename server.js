@@ -205,3 +205,95 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🌸 SnapAPI running on http://0.0.0.0:${PORT}`);
   console.log(`Wallet: ${WALLET}`);
 });
+
+// ============ QR Code Generator ============
+app.get('/qr', async (req, res) => {
+  const { text, size = 256 } = req.query;
+  if (!text) return res.status(400).json({ error: 'text parameter required' });
+  
+  try {
+    // Generate QR using Google Charts API (no dependency needed)
+    const qrUrl = `https://chart.googleapis.com/chart?cht=qr&chs=${size}x${size}&chl=${encodeURIComponent(text)}&choe=UTF-8`;
+    const resp = await fetch(qrUrl);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    res.set('Content-Type', 'image/png');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ Website Meta Extractor ============
+app.get('/meta', async (req, res) => {
+  const { url: targetUrl } = req.query;
+  if (!targetUrl) return res.status(400).json({ error: 'url parameter required' });
+  
+  try {
+    const browser = await puppeteer.launch({ headless: 'new', executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'] });
+    const page = await browser.newPage();
+    await page.goto(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`, { 
+      waitUntil: 'domcontentloaded', timeout: 15000 
+    });
+    
+    const meta = await page.evaluate(() => {
+      const get = (sel) => document.querySelector(sel)?.content || document.querySelector(sel)?.textContent || '';
+      return {
+        title: document.title,
+        description: get('meta[name="description"]'),
+        ogTitle: get('meta[property="og:title"]'),
+        ogDescription: get('meta[property="og:description"]'),
+        ogImage: get('meta[property="og:image"]'),
+        ogType: get('meta[property="og:type"]'),
+        twitterCard: get('meta[name="twitter:card"]'),
+        twitterTitle: get('meta[name="twitter:title"]'),
+        favicon: document.querySelector('link[rel*="icon"]')?.href || '',
+        canonical: document.querySelector('link[rel="canonical"]')?.href || '',
+        h1: document.querySelector('h1')?.textContent?.trim() || '',
+      };
+    });
+    
+    await browser.close();
+    res.json(meta);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ Website Performance Check ============
+app.get('/perf', async (req, res) => {
+  const { url: targetUrl } = req.query;
+  if (!targetUrl) return res.status(400).json({ error: 'url parameter required' });
+  
+  try {
+    const start = Date.now();
+    const browser = await puppeteer.launch({ headless: 'new', executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'] });
+    const page = await browser.newPage();
+    
+    const response = await page.goto(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`, { 
+      waitUntil: 'networkidle2', timeout: 30000 
+    });
+    
+    const loadTime = Date.now() - start;
+    const perf = await page.evaluate(() => {
+      const timing = performance.getEntriesByType('navigation')[0];
+      return {
+        domContentLoaded: Math.round(timing?.domContentLoadedEventEnd || 0),
+        domComplete: Math.round(timing?.domComplete || 0),
+        loadEvent: Math.round(timing?.loadEventEnd || 0),
+        resourceCount: performance.getEntriesByType('resource').length,
+        totalTransferSize: performance.getEntriesByType('resource').reduce((s, r) => s + (r.transferSize || 0), 0),
+      };
+    });
+    
+    await browser.close();
+    res.json({
+      url: targetUrl,
+      statusCode: response.status(),
+      totalLoadTimeMs: loadTime,
+      ...perf,
+      totalTransferSizeKB: Math.round(perf.totalTransferSize / 1024),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

@@ -303,3 +303,53 @@ app.get('/perf', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ============ OG Image Generator ============
+app.get('/og', async (req, res) => {
+  const { 
+    title = 'Hello World', 
+    desc = '', 
+    theme = 'dark',
+    emoji = '',
+    author = '',
+    domain = '',
+    width = 1200,
+    height = 630,
+  } = req.query;
+  
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    let template = fs.readFileSync(path.join(__dirname, 'og-template.html'), 'utf8');
+    
+    const themeClass = `theme-${['dark','light','sunset','ocean','forest'].includes(theme) ? theme : 'dark'}`;
+    const emojiHtml = emoji ? `<div class="og-emoji">${emoji}</div>` : '';
+    
+    template = template
+      .replace('{{THEME_CLASS}}', themeClass)
+      .replace('{{EMOJI_HTML}}', emojiHtml)
+      .replace('{{TITLE}}', title.replace(/</g, '&lt;'))
+      .replace('{{DESCRIPTION}}', (desc || '').replace(/</g, '&lt;'))
+      .replace('{{AUTHOR}}', (author || '').replace(/</g, '&lt;'))
+      .replace('{{DOMAIN}}', (domain || '').replace(/</g, '&lt;'));
+    
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      executablePath: '/usr/bin/google-chrome',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+    });
+    const page = await browser.newPage();
+    await page.setViewport({ width: parseInt(width), height: parseInt(height) });
+    await page.setContent(template, { waitUntil: 'networkidle0' });
+    const buffer = await page.screenshot({ type: 'png' });
+    await browser.close();
+    
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
